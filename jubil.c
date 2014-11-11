@@ -315,7 +315,6 @@ j_exec(j_t *J, j_obj_t *program)
     case J_STR_T:
     case J_SYM_T:
     case J_LIST_T:
-      fputs("Pushing something onto the stack\n", stderr);
       J->Stack = j_push(J, J->Stack, cursor);
       break;
 
@@ -386,7 +385,7 @@ main(int argc, char **argv)
   
   /* dbl = dup + 
    
-     (10 dbl puts) */
+     (10 dbl dup puts dbl puts) */
   f = J->Nil;
   f = j_cons(J, j_lookup(J, j_intern(J, "puts", 4)), f);
   f = j_cons(J, dbl, f);

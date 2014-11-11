@@ -12,7 +12,6 @@
 static void
 jB_dup(j_t *J)
 {
-  fputs("Hello from 'dup'\n", stderr);  
   if (J->Stack->head == J->Nil) {
     j_error(J, "'dup' requires one parameter on the stack.");
   }
@@ -24,7 +23,6 @@ static void
 jB_plus(j_t *J)
 {
   j_obj_t *left, *right;
-  fputs("Hello from '+'\n", stderr);
   
   if (J->Stack->head == J->Nil ||
       J->Stack->tail == J->Nil ||
@@ -67,8 +65,6 @@ jB_puts(j_t *J)
   if (J->Stack->head == J->Nil) {
     j_error(J, "'puts' requires 1 argument on the stack.");
   }
-
-  fputs("Hello from 'puts'\n", stderr);
   
   arg = j_pop(J, &J->Stack);
 
@@ -111,6 +107,3 @@ j_init_builtins(j_t *J)
     b++;
   }
 }
-
-
-
