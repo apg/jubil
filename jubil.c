@@ -320,7 +320,7 @@ j_exec(j_t *J, j_obj_t *program)
 
     case J_USR_T:
       if (J->Conts->head->tail == J->Nil) {
-        J->Conts->head = j_tail(J, J->Conts->head);
+        J->Conts = j_tail(J, J->Conts);
         program = cursor->ubody;
         goto recur;
       }
@@ -371,26 +371,30 @@ main(int argc, char **argv)
   j_t *J = &j;
 
   
-  j_obj_t *f, *dbl, *dblsym;
+  j_obj_t *f, *dbl, *dblsym, *trace;
   
   j_init(J);
 
   dblsym = j_intern(J, "dbl", 3);
+
+  trace = j_usr(J, j_intern(J, "trace", 5),
+                j_cons(J, j_lookup(J, j_intern(J, "dup", 3)),
+                       j_cons(J, j_lookup(J, j_intern(J, "puts", 4)),
+                              J->Nil)));
   
   dbl = j_usr(J, dblsym,
               j_cons(J, j_lookup(J, j_intern(J, "dup", 3)),
                      j_cons(J, j_lookup(J, j_intern(J, "+", 1)),
-                            J->Nil)));
+                            j_cons(J, trace, J->Nil))));
 
   
-  /* dbl = dup + 
-   
-     (10 dbl dup puts dbl puts) */
+  /* 
+     trace = dup puts
+     dbl = dup + trace
+     (10 dbl dbl dbl) */
   f = J->Nil;
-  f = j_cons(J, j_lookup(J, j_intern(J, "puts", 4)), f);
+  f = j_cons(J, dbl, f);  
   f = j_cons(J, dbl, f);
-  f = j_cons(J, j_lookup(J, j_intern(J, "puts", 4)), f);
-  f = j_cons(J, j_lookup(J, j_intern(J, "dup", 3)), f);    
   f = j_cons(J, dbl, f);
   f = j_cons(J, j_fix(J, 10), f);  
   j_exec(J, f);
