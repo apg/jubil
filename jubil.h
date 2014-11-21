@@ -2,10 +2,11 @@
 #define JUBIL_H_
 
 typedef enum {
+  J_BOOL_T = 1,
   J_FIX_T,
   J_FLO_T,
-  J_STR_T,    
-  J_SYM_T,  
+  J_STR_T,
+  J_SYM_T,
   J_LIST_T,
   J_USR_T,
   J_PRIM_T
@@ -28,11 +29,11 @@ struct jubil_obj {
       char *str;
     };
     struct {
-      j_obj_t *uname;
-      j_obj_t *ubody;
+      j_obj_t *uname; /* sym */
+      j_obj_t *ubody; /* list */
     };
     struct {
-      j_obj_t *pname;
+      j_obj_t *pname; /* sym */
       void (*prim)(j_t *);
     };
   };
@@ -40,7 +41,9 @@ struct jubil_obj {
 
 struct jubil {
   j_obj_t *Nil;
-  j_obj_t *Conts;  
+  j_obj_t *True;
+  j_obj_t *False;
+  j_obj_t *Conts;
   j_obj_t *Stack;
   j_obj_t **Syms;
 
@@ -49,11 +52,11 @@ struct jubil {
   j_obj_t **Values;
 
   jmp_buf *point;
-  
-  size_t Syms_sz;
+
+  int Syms_sz;
   int Syms_pt;
 
-  size_t Names_sz;
+  int Names_sz;
   int Names_pt;
 };
 
@@ -81,9 +84,13 @@ j_obj_t *j_usr(j_t *, j_obj_t *, j_obj_t *);
 j_obj_t *j_prim(j_t *, j_obj_t *, void (*prim)(j_t *));
 
 j_obj_t *j_define(j_t *, j_obj_t *, j_obj_t *);
+j_obj_t *j_lookup(j_t *, j_obj_t *);
 
 j_obj_t *j_head(j_t *, j_obj_t *);
 j_obj_t *j_tail(j_t *, j_obj_t *);
+
+j_obj_t *j_read(j_t *, FILE *in);
+void j_write(j_t *, FILE *out, j_obj_t *o);
 
 void j_init(j_t *);
 void j_init_builtins(j_t *);

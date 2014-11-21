@@ -89,7 +89,7 @@ j_intern(j_t *J, char *str, size_t len)
   if (i >= 0) {
     return J->Syms[i];
   }
-  
+
   sym = mk_str(J, str, len, J_SYM_T);
 
   if (J->Syms_pt >= J->Syms_sz) {
@@ -191,12 +191,11 @@ j_define(j_t *J, j_obj_t *sym, j_obj_t *val)
       perror("realloc");
       exit(1);
     }
-    
   }
 
   J->Names[J->Names_pt] = sym;
   J->Values[J->Names_pt] = val;
-  J->Names_pt++;  
+  J->Names_pt++;
 
   return val;
 }
@@ -259,7 +258,7 @@ j_push_fix(j_t *J, j_obj_t *s,  long n)
 j_obj_t *
 j_push_flo(j_t *J,  j_obj_t *s, double n)
 {
-  return j_push(J, s, j_flo(J, n));  
+  return j_push(J, s, j_flo(J, n));
 }
 
 j_obj_t *
@@ -271,7 +270,7 @@ j_push_str(j_t *J,  j_obj_t *s, char *str, size_t len)
 j_obj_t *
 j_push_sym(j_t *J,  j_obj_t *s, char *str, size_t len)
 {
-  return j_push(J, s, j_intern(J, str, len));  
+  return j_push(J, s, j_intern(J, str, len));
 }
 
 j_obj_t *
@@ -306,10 +305,11 @@ j_exec(j_t *J, j_obj_t *program)
   }
 
   J->Conts = j_push(J, J->Conts, program);
-  
+
   while (J->Conts->head != J->Nil) {
     cursor = j_head(J, J->Conts->head);
     switch (cursor->flags) {
+    case J_BOOL_T:
     case J_FIX_T:
     case J_FLO_T:
     case J_STR_T:
@@ -320,7 +320,7 @@ j_exec(j_t *J, j_obj_t *program)
 
     case J_USR_T:
       if (J->Conts->head->tail == J->Nil) {
-        J->Conts->head = j_tail(J, J->Conts->head);
+        J->Conts = j_tail(J, J->Conts);
         program = cursor->ubody;
         goto recur;
       }
@@ -352,16 +352,44 @@ j_init(j_t *J)
   J->Values = NULL;
 
   J->point = NULL;
-  
+
   /* Circular Nil */
   J->Nil = j_cons(J, NULL, NULL);
   J->Nil->head = J->Nil;
-  J->Nil->tail = J->Nil;  
-  
+  J->Nil->tail = J->Nil;
+
+  J->True = j_fix(J, 1);
+  J->True->flags = J_BOOL_T;
+  J->False = j_fix(J, 0);
+  J->False->flags = J_BOOL_T;
+
   J->Conts = J->Nil;
   J->Stack = J->Nil;
 
   j_init_builtins(J);
+}
+
+void
+j_repl(j_t *J)
+{
+  j_obj_t *tmp;
+  J->point = Malloc(sizeof(*J->point));
+  if (J->point == NULL) {
+    perror("malloc");
+    exit(1);
+  }
+
+  setjmp(*J->point);
+  for (;;) {
+    tmp = j_read(J, stdin);
+    if (tmp->flags == J_LIST_T) {
+      j_exec(J, tmp);
+    }
+    else {
+      J->Stack = j_push(J, J->Stack, tmp);
+    }
+
+  }
 }
 
 int
@@ -370,29 +398,35 @@ main(int argc, char **argv)
   j_t j;
   j_t *J = &j;
 
-  
-  j_obj_t *f, *dbl, *dblsym;
-  
+  j_obj_t *f, *dbl, *dblsym, *trace;
+
   j_init(J);
 
-  dblsym = j_intern(J, "dbl", 3);
-  
-  dbl = j_usr(J, dblsym,
-              j_cons(J, j_lookup(J, j_intern(J, "dup", 3)),
-                     j_cons(J, j_lookup(J, j_intern(J, "+", 1)),
-                            J->Nil)));
+  /* dblsym = j_intern(J, "dbl", 3); */
 
-  
-  /* dbl = dup + 
-   
-     (10 dbl dup puts dbl puts) */
-  f = J->Nil;
-  f = j_cons(J, j_lookup(J, j_intern(J, "puts", 4)), f);
-  f = j_cons(J, dbl, f);
-  f = j_cons(J, j_lookup(J, j_intern(J, "puts", 4)), f);
-  f = j_cons(J, j_lookup(J, j_intern(J, "dup", 3)), f);    
-  f = j_cons(J, dbl, f);
-  f = j_cons(J, j_fix(J, 10), f);  
-  j_exec(J, f);
+  /* trace = j_usr(J, j_intern(J, "trace", 5), */
+  /*               j_cons(J, j_lookup(J, j_intern(J, "dup", 3)), */
+  /*                      j_cons(J, j_lookup(J, j_intern(J, "puts", 4)), */
+  /*                             J->Nil))); */
+
+  /* dbl = j_usr(J, dblsym, */
+  /*             j_cons(J, j_lookup(J, j_intern(J, "dup", 3)), */
+  /*                    j_cons(J, j_lookup(J, j_intern(J, "+", 1)), */
+  /*                           j_cons(J, trace, J->Nil)))); */
+
+
+  /* /\* */
+  /*    trace = dup puts */
+  /*    dbl = dup + trace */
+  /*    (10 dbl dbl dbl) *\/ */
+  /* f = J->Nil; */
+  /* f = j_cons(J, dbl, f); */
+  /* f = j_cons(J, dbl, f); */
+  /* f = j_cons(J, dbl, f); */
+  /* f = j_cons(J, j_fix(J, 10), f); */
+  /* j_exec(J, f); */
+
+  j_repl(J);
+
   return 0;
 }
