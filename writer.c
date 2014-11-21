@@ -11,6 +11,7 @@ print_atom(j_t *J, j_obj_t *a)
   switch (a->flags) {
   case J_BOOL_T:
     fputs(a->fix == 0 ? "false": "true", J->out);
+    break;
   case J_FIX_T:
     fprintf(J->out, "%ld", a->fix);
     break;
