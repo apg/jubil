@@ -282,8 +282,10 @@ j_push_nil(j_t *J,  j_obj_t *s)
 void
 j_error(j_t *J, char *error)
 {
-  fputs(error, stderr);
-  fputc('\n', stderr);
+  fputs(error, J->err);
+  fputc('\n', J->err);
+  fflush(J->in); /* might have read buffer in there */
+  J->Stack = J->Conts = J->Nil;
 
   /* longjmp to wherever after outputting the error message */
   if (J->point != NULL) {
@@ -317,7 +319,6 @@ j_exec(j_t *J, j_obj_t *program)
     case J_LIST_T:
       J->Stack = j_push(J, J->Stack, cursor);
       break;
-
     case J_USR_T:
       if (J->Conts->head->tail == J->Nil) {
         J->Conts = j_tail(J, J->Conts);
@@ -366,6 +367,10 @@ j_init(j_t *J)
   J->Conts = J->Nil;
   J->Stack = J->Nil;
 
+  J->in = stdin;
+  J->out = stdout;
+  J->err = stderr;
+
   j_init_builtins(J);
 }
 
@@ -381,14 +386,21 @@ j_repl(j_t *J)
 
   setjmp(*J->point);
   for (;;) {
-    tmp = j_read(J, stdin);
+    tmp = j_read(J);
     if (tmp->flags == J_LIST_T) {
-      j_exec(J, tmp);
+      if (tmp->head == j_intern(J, "def", 3) &&
+          tmp->tail != J->Nil && tmp->tail->head->flags == J_SYM_T &&
+          tmp->tail->tail != J->Nil) {
+        j_define(J, tmp->tail->head,
+                 j_usr(J, tmp->tail->head, tmp->tail->tail));
+      }
+      else {
+        j_exec(J, tmp);
+      }
     }
     else {
       J->Stack = j_push(J, J->Stack, tmp);
     }
-
   }
 }
 
@@ -397,67 +409,8 @@ main(int argc, char **argv)
 {
   j_t j;
   j_t *J = &j;
-
-<<<<<<< HEAD
-  j_obj_t *f, *dbl, *dblsym, *trace;
-
   j_init(J);
-
-  /* dblsym = j_intern(J, "dbl", 3); */
-
-  /* trace = j_usr(J, j_intern(J, "trace", 5), */
-  /*               j_cons(J, j_lookup(J, j_intern(J, "dup", 3)), */
-  /*                      j_cons(J, j_lookup(J, j_intern(J, "puts", 4)), */
-  /*                             J->Nil))); */
-
-  /* dbl = j_usr(J, dblsym, */
-  /*             j_cons(J, j_lookup(J, j_intern(J, "dup", 3)), */
-  /*                    j_cons(J, j_lookup(J, j_intern(J, "+", 1)), */
-  /*                           j_cons(J, trace, J->Nil)))); */
-
-
-  /* /\* */
-  /*    trace = dup puts */
-  /*    dbl = dup + trace */
-  /*    (10 dbl dbl dbl) *\/ */
-  /* f = J->Nil; */
-  /* f = j_cons(J, dbl, f); */
-  /* f = j_cons(J, dbl, f); */
-  /* f = j_cons(J, dbl, f); */
-  /* f = j_cons(J, j_fix(J, 10), f); */
-  /* j_exec(J, f); */
-
   j_repl(J);
 
-=======
-  
-  j_obj_t *f, *dbl, *dblsym, *trace;
-  
-  j_init(J);
-
-  dblsym = j_intern(J, "dbl", 3);
-
-  trace = j_usr(J, j_intern(J, "trace", 5),
-                j_cons(J, j_lookup(J, j_intern(J, "dup", 3)),
-                       j_cons(J, j_lookup(J, j_intern(J, "puts", 4)),
-                              J->Nil)));
-  
-  dbl = j_usr(J, dblsym,
-              j_cons(J, j_lookup(J, j_intern(J, "dup", 3)),
-                     j_cons(J, j_lookup(J, j_intern(J, "+", 1)),
-                            j_cons(J, trace, J->Nil))));
-
-  
-  /* 
-     trace = dup puts
-     dbl = dup + trace
-     (10 dbl dbl dbl) */
-  f = J->Nil;
-  f = j_cons(J, dbl, f);  
-  f = j_cons(J, dbl, f);
-  f = j_cons(J, dbl, f);
-  f = j_cons(J, j_fix(J, 10), f);  
-  j_exec(J, f);
->>>>>>> 6ac442e9eb35836d6f5953ea49a7a478c405f9bf
   return 0;
 }

@@ -355,7 +355,8 @@ jB_puts(j_t *J)
     j_error(J, "'puts' requires 1 argument on the stack.");
   }
 
-  j_write(J, stdout, j_pop(J, &J->Stack));
+  j_write(J, j_pop(J, &J->Stack));
+  fputc('\n', J->out);
 }
 
 static j_builtin_t builtins[] = {

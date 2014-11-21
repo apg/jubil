@@ -5,50 +5,49 @@
 #include "jubil.h"
 
 static void
-print_atom(j_t *J, FILE *out, j_obj_t *a)
+print_atom(j_t *J, j_obj_t *a)
 {
   int i;
   switch (a->flags) {
   case J_BOOL_T:
-    fputs(a->fix == 0 ? "false": "true", out);
+    fputs(a->fix == 0 ? "false": "true", J->out);
   case J_FIX_T:
-    fprintf(out, "%ld", a->fix);
+    fprintf(J->out, "%ld", a->fix);
     break;
   case J_FLO_T:
-    fprintf(out, "%lf", a->flo);
+    fprintf(J->out, "%lf", a->flo);
     break;
   case J_SYM_T:
-    fputs(a->str, out);
+    fputs(a->str, J->out);
     break;
   case J_STR_T:
-    fputc('"', out);
+    fputc('"', J->out);
     for (i = 0; i < a->str_sz; i++) {
       switch (a->str[i]) {
       case '"':
-        fputc('\\', out);
-        fputc('"', out);
+        fputs("\\\"", J->out);
         break;
       default:
-        fputc(a->str[i], out);
+        fputc(a->str[i], J->out);
       }
     }
-    fputc('"', out);
+    fputc('"', J->out);
     break;
   }
 }
 
 static void
-print_list(j_t *J, FILE *out, j_obj_t *a)
+print_list(j_t *J, j_obj_t *a)
 {
   j_obj_t *obj;
 
   if (a == J->Nil) {
-    fprintf(out, "nil");
+    fputs("nil", J->out);
     return;
   }
-  fputc('(', out);
+  fputc('(', J->out);
   for (obj = a->head; obj; ) {
-    j_write(J, out, obj);
+    j_write(J, obj);
 
     obj = a->tail;
     if (obj && obj->flags == J_LIST_T) {
@@ -56,19 +55,19 @@ print_list(j_t *J, FILE *out, j_obj_t *a)
         break;
       }
       obj = a->head;
-      fputc(' ', out);
+      fputc(' ', J->out);
     }
     else if (obj) {
-      fputc(' ', out);
-      j_write(J, out, obj);
+      fputc(' ', J->out);
+      j_write(J, obj);
       obj = NULL;
     }
   }
-  fputc(')', out);
+  fputc(')', J->out);
 }
 
 void
-j_write(j_t *J, FILE *out, j_obj_t *o)
+j_write(j_t *J, j_obj_t *o)
 {
   switch (o->flags) {
   case J_BOOL_T:
@@ -76,20 +75,20 @@ j_write(j_t *J, FILE *out, j_obj_t *o)
   case J_FLO_T:
   case J_STR_T:
   case J_SYM_T:
-    print_atom(J, out, o);
+    print_atom(J, o);
     break;
   case J_LIST_T:
-    print_list(J, out, o);
+    print_list(J, o);
     break;
   case J_USR_T:
-    fputs("<# ", out);
-    print_atom(J, out, o->uname);
-    print_list(J, out, o->ubody);
-    fputs(">", out);
+    fputs("<# ", J->out);
+    print_atom(J, o->uname);
+    print_list(J, o->ubody);
+    fputs(">", J->out);
     break;
   case J_PRIM_T:
-    fputs("<#Primitive: ", out);
-    print_atom(J, out, o->pname);
+    fputs("<#Primitive: ", J->out);
+    print_atom(J, o->pname);
     break;
   default:
     fprintf(stderr, "Invalid object! Aborting\n");

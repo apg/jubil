@@ -13,14 +13,14 @@
  */
 
 static j_obj_t *
-read_string(j_t *J, FILE *in)
+read_string(j_t *J)
 {
   char buffer[255];
   int bufi = 0;
   int ch, la;
 
   while (bufi < 255) {
-    ch = fgetc(in);
+    ch = fgetc(J->in);
     if (ch == EOF) {
       j_error(J, "eof while reading string.");
       return NULL;
@@ -30,7 +30,7 @@ read_string(j_t *J, FILE *in)
       return j_str(J, buffer, bufi);
     }
     else if (ch == '\\') {
-      la = fgetc(in);
+      la = fgetc(J->in);
       if (la == EOF) {
         j_error(J, "eof while reading string.");
         return NULL;
@@ -65,7 +65,7 @@ read_string(j_t *J, FILE *in)
 }
 
 static j_obj_t *
-read_number(j_t *J, FILE *in, int negative)
+read_number(j_t *J, int negative)
 {
   char buffer[32];
   int bufi = 0;
@@ -75,7 +75,7 @@ read_number(j_t *J, FILE *in, int negative)
   long fixval;
 
   while (bufi < 32) {
-    ch = fgetc(in);
+    ch = fgetc(J->in);
     if (ch == EOF) {
       j_error(J, "eof  while reading number.");
       return NULL;
@@ -95,7 +95,7 @@ read_number(j_t *J, FILE *in, int negative)
       }
     }
     else if (isdelim(ch)) {
-      ungetc(ch, in);
+      ungetc(ch, J->in);
       /* have our number. Let's do it */
       buffer[bufi] = '\0';
       if (bufi > 0) {
@@ -125,7 +125,7 @@ read_number(j_t *J, FILE *in, int negative)
 }
 
 static j_obj_t *
-read_symbol(j_t *J, FILE *in)
+read_symbol(j_t *J)
 {
   char buffer[255];
   int bufi = 0;
@@ -133,7 +133,7 @@ read_symbol(j_t *J, FILE *in)
   j_obj_t *module, *identifier;
 
   while (bufi < 255) {
-    ch = fgetc(in);
+    ch = fgetc(J->in);
     if (ch == EOF) {
       j_error(J, "eof while reading symbol.");
       return NULL;
@@ -150,7 +150,7 @@ read_symbol(j_t *J, FILE *in)
       buffer[bufi++] = ch;
     }
     else if (isdelim(ch)) {
-      ungetc(ch, in);
+      ungetc(ch, J->in);
       buffer[bufi] = '\0';
       return j_intern(J, buffer, bufi);
     }
@@ -172,11 +172,11 @@ eat_space(FILE *in)
 }
 
 static j_obj_t *
-read_list(j_t *J, FILE *in)
+read_list(j_t *J)
 {
   j_obj_t *obj;
   int ch;
-  ch = fgetc(in);
+  ch = fgetc(J->in);
   if (ch == EOF) {
     j_error(J, "eof while reading list.");
     return NULL;
@@ -187,40 +187,40 @@ read_list(j_t *J, FILE *in)
     return J->Nil;
   }
   else {
-    ungetc(ch, in);
+    ungetc(ch, J->in);
   }
 
   /* Ok. Legitimate list it seems. Let's read it recursively */
-  obj = j_read(J, in);
+  obj = j_read(J);
   if (!obj) {
     return obj;
   }
 
-  ch = eat_space(in);
+  ch = eat_space(J->in);
   if (ch == ')') {
     return j_cons(J, obj, J->Nil);
   }
 
-  ungetc(ch, in);
-  return j_cons(J, obj, read_list(J, in));
+  ungetc(ch, J->in);
+  return j_cons(J, obj, read_list(J));
 }
 
 j_obj_t *
-j_read(j_t *J, FILE *in)
+j_read(j_t *J)
 {
   j_obj_t *tmp;
   int ch, la;
  next:
-  ch = fgetc(in);
+  ch = fgetc(J->in);
   if (ch == EOF) {
     return NULL;
   }
 
   switch (ch) {
   case '(':
-    return read_list(J, in);
+    return read_list(J);
   case ';': /* read til end of line */
-    while ((ch = fgetc(in)) != '\n') {
+    while ((ch = fgetc(J->in)) != '\n') {
       if (ch == EOF) {
         return NULL;
       }
@@ -232,36 +232,35 @@ j_read(j_t *J, FILE *in)
   case '\r':
     goto next;
   case '"':
-    return read_string(J, in);
+    return read_string(J);
   case '\'':
-    tmp = j_read(J, in);
+    tmp = j_read(J);
     if (tmp != NULL && tmp->flags == J_LIST_T) {
-      fprintf(stderr, "TRACE: quoted list becomes anonymous USR\n");
+      fprintf(J->err, "TRACE: quoted list becomes anonymous USR\n");
       return j_usr(J, j_intern(J, "<anonymous>", strlen("<anonymous>")), tmp);
     }
     break;
   case '-':
   case '+':
-    la = fgetc(in);
+    la = fgetc(J->in);
     if (la == EOF) {
       j_error(J, "eof reached in mid form.");
       return NULL;
     }
     if (isdigit(la)) {
-      ungetc(la, in);
-      return read_number(J, in, ch == '-');
+      ungetc(la, J->in);
+      return read_number(J, ch == '-');
     }
     else {
-      ungetc(la, in);
+      ungetc(la, J->in);
     }
   default:
-    ungetc(ch, in);
+    ungetc(ch, J->in);
     if (isdigit(ch)) {
-      return read_number(J, in, 0);
+      return read_number(J, 0);
     }
   }
 
-  tmp = read_symbol(J, in);
-  fprintf(stderr, "TRACE: Looking up a symbol\n");
+  tmp = read_symbol(J);
   return j_lookup(J, tmp);
 }

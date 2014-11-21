@@ -51,6 +51,10 @@ struct jubil {
   j_obj_t **Names;
   j_obj_t **Values;
 
+  FILE *in; /* current input file */
+  FILE *out; /* current output file */
+  FILE *err; /* current output file */
+
   jmp_buf *point;
 
   int Syms_sz;
@@ -89,8 +93,8 @@ j_obj_t *j_lookup(j_t *, j_obj_t *);
 j_obj_t *j_head(j_t *, j_obj_t *);
 j_obj_t *j_tail(j_t *, j_obj_t *);
 
-j_obj_t *j_read(j_t *, FILE *in);
-void j_write(j_t *, FILE *out, j_obj_t *o);
+j_obj_t *j_read(j_t *);
+void j_write(j_t *, j_obj_t *o);
 
 void j_init(j_t *);
 void j_init_builtins(j_t *);
