@@ -204,6 +204,7 @@ j_obj_t *
 j_lookup(j_t *J, j_obj_t *sym)
 {
   int i;
+
   for (i = 0; i < J->Names_pt; i++) {
     if (J->Names[i] == sym) {
       return J->Values[i];
@@ -315,10 +316,12 @@ j_exec(j_t *J, j_obj_t *program)
     case J_FIX_T:
     case J_FLO_T:
     case J_STR_T:
-    case J_SYM_T:
     case J_LIST_T:
       J->Stack = j_push(J, J->Stack, cursor);
       break;
+    case J_SYM_T:
+      J->Conts->head = j_push(J, j_tail(J, J->Conts->head), j_lookup(J, cursor));
+      continue;
     case J_USR_T:
       if (J->Conts->head->tail == J->Nil) {
         J->Conts = j_tail(J, J->Conts);

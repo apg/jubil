@@ -261,6 +261,5 @@ j_read(j_t *J)
     }
   }
 
-  tmp = read_symbol(J);
-  return j_lookup(J, tmp);
+  return read_symbol(J);
 }
