@@ -398,6 +398,7 @@ main(int argc, char **argv)
   j_t j;
   j_t *J = &j;
 
+<<<<<<< HEAD
   j_obj_t *f, *dbl, *dblsym, *trace;
 
   j_init(J);
@@ -428,5 +429,35 @@ main(int argc, char **argv)
 
   j_repl(J);
 
+=======
+  
+  j_obj_t *f, *dbl, *dblsym, *trace;
+  
+  j_init(J);
+
+  dblsym = j_intern(J, "dbl", 3);
+
+  trace = j_usr(J, j_intern(J, "trace", 5),
+                j_cons(J, j_lookup(J, j_intern(J, "dup", 3)),
+                       j_cons(J, j_lookup(J, j_intern(J, "puts", 4)),
+                              J->Nil)));
+  
+  dbl = j_usr(J, dblsym,
+              j_cons(J, j_lookup(J, j_intern(J, "dup", 3)),
+                     j_cons(J, j_lookup(J, j_intern(J, "+", 1)),
+                            j_cons(J, trace, J->Nil))));
+
+  
+  /* 
+     trace = dup puts
+     dbl = dup + trace
+     (10 dbl dbl dbl) */
+  f = J->Nil;
+  f = j_cons(J, dbl, f);  
+  f = j_cons(J, dbl, f);
+  f = j_cons(J, dbl, f);
+  f = j_cons(J, j_fix(J, 10), f);  
+  j_exec(J, f);
+>>>>>>> 6ac442e9eb35836d6f5953ea49a7a478c405f9bf
   return 0;
 }
