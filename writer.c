@@ -5,31 +5,31 @@
 #include "jubil.h"
 
 static void
-print_atom(j_t *J, j_obj_t *a)
+print_atom(jubil *J, jubil_value a)
 {
   int i;
-  switch (a->flags) {
-  case J_BOOL_T:
+  switch (a.flags) {
+  case JUBIL_T_BOOL:
     fputs(a->fix == 0 ? "false": "true", J->out);
     break;
-  case J_FIX_T:
-    fprintf(J->out, "%ld", a->fix);
+  case JUBIL_T_FIX:
+    fprintf(J->out, "%ld", a.fix);
     break;
-  case J_FLO_T:
-    fprintf(J->out, "%lf", a->flo);
+  case JUBIL_T_FLO:
+    fprintf(J->out, "%lf", a.flo);
     break;
-  case J_SYM_T:
-    fputs(a->str, J->out);
+  case JUBIL_T_SYM:
+    fputs(a.object->str, J->out);
     break;
-  case J_STR_T:
+  case JUBIL_T_STR:
     fputc('"', J->out);
-    for (i = 0; i < a->str_sz; i++) {
-      switch (a->str[i]) {
+    for (i = 0; i < a.object->str_sz; i++) {
+      switch (a.object->str[i]) {
       case '"':
         fputs("\\\"", J->out);
         break;
       default:
-        fputc(a->str[i], J->out);
+        fputc(a.object->str[i], J->out);
       }
     }
     fputc('"', J->out);
@@ -38,27 +38,27 @@ print_atom(j_t *J, j_obj_t *a)
 }
 
 static void
-print_list(j_t *J, j_obj_t *a)
+print_list(jubil *J, jubil_value a)
 {
-  j_obj_t *obj;
+  jubil_value obj;
 
   if (a == J->Nil) {
     fputs("nil", J->out);
     return;
   }
   fputc('(', J->out);
-  for (obj = a->head; obj; ) {
+  for (obj = a.object->cons->head; obj; ) {
     j_write(J, obj);
 
-    obj = a->tail;
-    if (obj && obj->flags == J_LIST_T) {
+    obj = a.object->tail;
+    if (obj.flags == JUBIL_T_LIST) {
       if (obj == J->Nil) {
         break;
       }
-      obj = a->head;
+      obj = a.object->head;
       fputc(' ', J->out);
     }
-    else if (obj) {
+    else {
       fputc(' ', J->out);
       j_write(J, obj);
       obj = NULL;
@@ -68,26 +68,26 @@ print_list(j_t *J, j_obj_t *a)
 }
 
 void
-j_write(j_t *J, j_obj_t *o)
+j_write(jubil *J, jubil_value o)
 {
   switch (o->flags) {
-  case J_BOOL_T:
-  case J_FIX_T:
-  case J_FLO_T:
-  case J_STR_T:
-  case J_SYM_T:
+  case JUBIL_T_BOOL:
+  case JUBIL_T_FIX:
+  case JUBIL_T_FLO:
+  case JUBIL_T_STR:
+  case JUBIL_T_SYM:
     print_atom(J, o);
     break;
-  case J_LIST_T:
+  case JUBIL_T_LIST:
     print_list(J, o);
     break;
-  case J_USR_T:
+  case JUBIL_T_USR:
     fputs("<# ", J->out);
     print_atom(J, o->uname);
     print_list(J, o->ubody);
     fputs(">", J->out);
     break;
-  case J_PRIM_T:
+  case JUBIL_T_PRIM:
     fputs("<#Primitive: ", J->out);
     print_atom(J, o->pname);
     break;

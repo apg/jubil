@@ -1,28 +1,21 @@
 ;;;; Startup library for jubil.
 
-;;; qand - Evaluates 2 quotations and ands the result
-;;; qor - Evaluates 2 quotations and ors the result
-;;; or - 
-
 ;;; booleans
-(def false? false = )
-(def true? true = )
+(def false? (= false))
+(def true? (= true))
 
-(def zero? 0 =)
-(def pos? 0.0 >)
-(def neg? 0.0 >)
+(def zero? (= 0))
+(def pos? (> 0.0))
+(def neg? (< 0.0))
 
-("zero? 1: " puts 1 zero? puts)
-("zero? 0: " puts 0 zero? puts)
-("zero? -1: " puts -1 zero? puts)
+(puts/3 "zero? 1: " (zero? 1) "\n")
+(puts/3 "zero? 0: " (zero? 0) "\n")
+(puts/3 "zero? -1: " (zero? -1) "\n")
 
-("pos? 1: " puts 1 pos? puts)
-("pos? 0: " puts 0 pos? puts)
-("pos? -1: " puts -1 pos? puts)
+(puts/3 "pos? 1: " (pos? 1) "\n")
+(puts/3 "pos? 0: " (pos? 0) "\n")
+(puts/3 "pos? -1: " (pos? -1) "\n")
 
-("neg? 1: " puts 1 neg? puts)
-("neg? 0: " puts 0 neg? puts)
-("neg? -1: " puts -1 neg? puts)
-
-
-
+(puts/3 "neg? 1: " (neg? 1) "\n")
+(puts/3 "neg? 0: " (neg? 0) "\n")
+(puts/3 "neg? -1: " (neg? -1) "\n")

@@ -12,10 +12,10 @@
  * Should pass stuff on the stack, instead of via return values.
  */
 
-static j_obj_t *
-read_string(j_t *J)
+static jubil_object
+read_string(jubil *J)
 {
-  char buffer[255];
+  char buffer[255]; /* TODO: Need to be able to support larger than 255 character strings... */
   int bufi = 0;
   int ch, la;
 
@@ -64,8 +64,8 @@ read_string(j_t *J)
   return NULL;
 }
 
-static j_obj_t *
-read_number(j_t *J, int negative)
+static jubil_object
+read_number(jubil *J, int negative)
 {
   char buffer[32];
   int bufi = 0;
@@ -124,13 +124,13 @@ read_number(j_t *J, int negative)
   return NULL;
 }
 
-static j_obj_t *
-read_symbol(j_t *J)
+static jubil_object
+read_symbol(jubil *J)
 {
   char buffer[255];
   int bufi = 0;
   int ch, la, sawdot = -1;
-  j_obj_t *module, *identifier;
+  jubil_object module, *identifier;
 
   while (bufi < 255) {
     ch = fgetc(J->in);
@@ -171,10 +171,10 @@ eat_space(FILE *in)
   return ch;
 }
 
-static j_obj_t *
-read_list(j_t *J)
+static jubil_object
+read_list(jubil *J)
 {
-  j_obj_t *obj;
+  jubil_object obj;
   int ch;
   ch = fgetc(J->in);
   if (ch == EOF) {
@@ -205,10 +205,10 @@ read_list(j_t *J)
   return j_cons(J, obj, read_list(J));
 }
 
-j_obj_t *
-j_read(j_t *J)
+jubil_object
+j_read(jubil *J)
 {
-  j_obj_t *tmp;
+  jubil_object tmp;
   int ch, la;
  next:
   ch = fgetc(J->in);
