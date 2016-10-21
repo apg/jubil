@@ -1,5 +1,3 @@
-#include <gc.h>
-
 #include <setjmp.h>
 #include <stdint.h>
 #include <string.h>
@@ -8,36 +6,55 @@
 #include <assert.h>
 #include "jubil.h"
 
-static void *(*Malloc)(size_t) = GC_malloc;
-static void *(*Realloc)(void *, size_t) = GC_realloc;
+#ifndef MIN
+#define MIN(x, y) ((x < y) ? (x): (y))
+#endif
 
-static j_obj_t *
-mk_str(j_t *J, char *str, size_t len, int flag)
+#ifndef IS_NIL
+#define IS_NIL(J, o) ((o.flags & JUBIL_T_CONS) && \
+                      o.object == J->Nil.object)
+#endif
+
+
+static unsigned long
+djb2_hash(char *str)
 {
-  j_obj_t *o = Malloc(sizeof(*o));
-  if (o == NULL) {
-    perror("malloc");
-    exit(1);
+  unsigned long hash = 5381;
+  int c;
+  while ((c = *str++)) {
+    hash = ((hash << 5) + hash) ^ c;
   }
+  return hash;
+}
 
-  o->flags = flag;
-  o->str = strndup(str, len);
-  o->str_sz = len;
+
+static jubil_value
+mk_str(jubil *J, char *str, size_t len, int flag)
+{
+  jubil_value o;
+
+  o.flags = flag;
+  o.object->str = strndup(str, len);
+  o.object->str[len-1] = '\0'; /* force NULL termination */
+  o.object->str_sz = len;
+  o.object->str_hash = djb2_hash(str);
 
   return o;
 }
 
 static int
-sym_find(j_t *J, char *str, size_t len)
+sym_find(jubil *J, char *str, size_t len)
 {
   int i = -1;
+  unsigned long shash = djb2_hash(str);
   if (J->Syms_pt > 0) {
     for (i = 0; i < J->Syms_pt; i++) {
-      if (len != J->Syms[i]->str_sz) {
+      if (len != J->Syms[i].object->str_sz) {
         continue;
-      }
-      if (strncmp(J->Syms[i]->str, str, len) == 0) {
-        return i;
+      } else if (J->Syms[i].object->str_hash != shash) {
+        continue;
+      } else if (strncmp(J->Syms[i].object->str, str, len) == 0) {
+        return 1;
       }
     }
   }
@@ -45,56 +62,47 @@ sym_find(j_t *J, char *str, size_t len)
   return -1;
 }
 
-j_obj_t *
-j_fix(j_t *J, long num)
-{
-  j_obj_t *o = Malloc(sizeof(*o));
-  if (o == NULL) {
-    perror("malloc");
-    exit(1);
-  }
 
-  o->flags = J_FIX_T;
-  o->fix = num;
+jubil_value
+j_fix(jubil *J, long num)
+{
+  jubil_value o;
+  o.flags = JUBIL_T_FIX;
+  o.fix = num;
   return o;
 }
 
-j_obj_t *
-j_flo(j_t *J, double num)
+jubil_value
+j_flo(jubil *J, double num)
 {
-  j_obj_t *o = Malloc(sizeof(*o));
-  if (o == NULL) {
-    perror("malloc");
-    exit(1);
-  }
-
-  o->flags = J_FLO_T;
-  o->flo = num;
+  jubil_value o;
+  o.flags = JUBIL_T_FLO;
+  o.flo = num;
   return o;
 }
 
-j_obj_t *
-j_str(j_t *J, char *str, size_t len)
+jubil_value
+j_str(jubil *J, char *str, size_t len)
 {
-  return mk_str(J, str, len, J_STR_T);
+  return mk_str(J, str, len, JUBIL_T_STR);
 }
 
-j_obj_t *
-j_intern(j_t *J, char *str, size_t len)
+jubil_value
+j_intern(jubil *J, char *str, size_t len)
 {
   int i;
-  j_obj_t *sym;
+  jubil_value sym;
 
   i = sym_find(J, str, len);
   if (i >= 0) {
     return J->Syms[i];
   }
 
-  sym = mk_str(J, str, len, J_SYM_T);
+  sym = mk_str(J, str, len, JUBIL_T_SYM);
 
   if (J->Syms_pt >= J->Syms_sz) {
     J->Syms_sz = J->Syms_sz > 0 ? J->Syms_sz * 2: 8;
-    J->Syms = Realloc(J->Syms, sizeof(*J->Syms) * J->Syms_sz);
+    J->Syms = realloc(J->Syms, sizeof(*J->Syms) * J->Syms_sz);
     if (J->Syms == NULL) {
       perror("realloc");
       exit(1);
@@ -106,87 +114,106 @@ j_intern(j_t *J, char *str, size_t len)
   return sym;
 }
 
-j_obj_t *
-j_cons(j_t *J, j_obj_t *h, j_obj_t *t)
+jubil_value
+j_cons(jubil *J, jubil_value h, jubil_value t)
 {
-  j_obj_t *o = Malloc(sizeof(*o));
-  if (o == NULL) {
+  jubil_value o;
+
+  o.object = malloc(sizeof(*o.object));
+  if (o.object == NULL) {
     perror("malloc");
     exit(1);
   }
 
-  o->flags = J_LIST_T;
-  o->head = h;
-  o->tail = t;
+  o.flags = JUBIL_T_LIST;
+  o.object->head = h;
+  o.object->tail = t;
   return o;
 }
 
-j_obj_t *
-j_usr(j_t *J, j_obj_t *sym, j_obj_t *body)
+
+jubil_value
+j_prim(jubil *J, jubil_value sym, int (*prim)(jubil *))
 {
-  j_obj_t *o = Malloc(sizeof(*o));
-  if (o == NULL) {
+  jubil_value o;
+
+  o.object = malloc(sizeof(*o.object));
+  if (o.object == NULL) {
     perror("malloc");
     exit(1);
   }
 
-  o->flags = J_USR_T;
-  o->uname = sym;
-  o->ubody = body;
+  o.flags = JUBIL_T_PRIM;
+  o.object->builtin_name = sym;
+  o.object->builtin = prim;
 
   return o;
 }
 
-j_obj_t *
-j_prim(j_t *J, j_obj_t *sym, void (*prim)(j_t *))
+int
+j_strcmp(jubil_value a, jubil_value b)
 {
-  j_obj_t *o = Malloc(sizeof(*o));
-  if (o == NULL) {
-    perror("malloc");
-    exit(1);
+  int same = (a.flags & b.flags) & (JUBIL_T_SYM | JUBIL_T_STR);
+  if (same) {
+    return strncmp(a.object->str, b.object->str,
+                  MIN(a.object->str_sz, b.object->str_sz));
   }
-
-  o->flags = J_PRIM_T;
-  o->pname = sym;
-  o->prim = prim;
-
-  return o;
+  return -1;
 }
 
 
-j_obj_t *
-j_head(j_t *J, j_obj_t *l)
+jubil_value
+j_head(jubil *J, jubil_value l)
 {
   /* TODO: assert it's a list */
-  return l->head;
+  return l.object->head;
 }
 
-j_obj_t *
-j_tail(j_t *J, j_obj_t *l)
+jubil_value
+j_tail(jubil *J, jubil_value l)
 {
   /* TODO: assert it's a list */
-  return l->tail;
+  return l.object->tail;
 }
 
-
-j_obj_t *
-j_define(j_t *J, j_obj_t *sym, j_obj_t *val)
+static int
+find_name(jubil *J, jubil_value sym)
 {
   int i;
   for (i = 0; i < J->Names_pt; i++) {
-    if (J->Names[i] == sym) {
-      J->Values[i] = val;
+    if ((J->Names[i].object->str_hash == sym.object->str_hash) &&
+        j_strcmp(J->Names[i], sym)) {
+      return i;
     }
   }
+  return -1;
+}
 
+jubil_value
+j_define(jubil *J, jubil_value sym, jubil_value val)
+{
+  int i;
+
+  if ((sym.flags & JUBIL_T_SYM) == 0) {
+    j_error(J, "def called with non-symbol as first argument");
+    return J->Nil;
+  }
+
+  i = find_name(J, sym);
+  if (i >= 0) {
+    J->Names[i] = val;
+    return val;
+  }
+
+  /* Not found. */
   if (J->Names_pt >= J->Names_sz) {
     J->Names_sz = J->Names_sz > 0 ? J->Names_sz * 2: 8;
-    J->Names = Realloc(J->Names, sizeof(*J->Names) * J->Names_sz);
+    J->Names = realloc(J->Names, sizeof(*J->Names) * J->Names_sz);
     if (J->Names == NULL) {
       perror("realloc");
       exit(1);
     }
-    J->Values = Realloc(J->Values, sizeof(*J->Values) * J->Names_sz);
+    J->Values = realloc(J->Values, sizeof(*J->Values) * J->Names_sz);
     if (J->Values == NULL) {
       perror("realloc");
       exit(1);
@@ -200,88 +227,22 @@ j_define(j_t *J, j_obj_t *sym, j_obj_t *val)
   return val;
 }
 
-j_obj_t *
-j_lookup(j_t *J, j_obj_t *sym)
+jubil_value
+j_lookup(jubil *J, jubil_value sym)
 {
   int i;
 
-  for (i = 0; i < J->Names_pt; i++) {
-    if (J->Names[i] == sym) {
-      return J->Values[i];
-    }
+  i = find_name(J, sym);
+  if (i >= 0) {
+    return J->Values[i];
   }
+
   j_error(J, "unknown name");
   return J->Nil;
 }
 
-
-j_obj_t *
-j_push(j_t *J, j_obj_t *s, j_obj_t *o)
-{
-  return j_cons(J, o, s);
-}
-
-j_obj_t *
-j_pop(j_t *J, j_obj_t **s)
-{
-  j_obj_t *h;
-  if (*s == J->Nil) {
-    j_error(J, "stack underflow");
-    return J->Nil;
-  }
-
-  h = j_head(J, *s);
-  *s = j_tail(J, *s);
-
-  return h;
-}
-
-j_obj_t *
-j_peek(j_t *J, j_obj_t *s)
-{
-  if (s == J->Nil) {
-    j_error(J, "stack underflow");
-    return J->Nil;
-  }
-
-  return j_head(J, s);
-}
-
-
-
-/** TODO: THESE PROBABABLY SHOULD JUST BE MACROS */
-j_obj_t *
-j_push_fix(j_t *J, j_obj_t *s,  long n)
-{
-  return j_push(J, s, j_fix(J, n));
-}
-
-j_obj_t *
-j_push_flo(j_t *J,  j_obj_t *s, double n)
-{
-  return j_push(J, s, j_flo(J, n));
-}
-
-j_obj_t *
-j_push_str(j_t *J,  j_obj_t *s, char *str, size_t len)
-{
-  return j_push(J, s, j_str(J, str, len));
-}
-
-j_obj_t *
-j_push_sym(j_t *J,  j_obj_t *s, char *str, size_t len)
-{
-  return j_push(J, s, j_intern(J, str, len));
-}
-
-j_obj_t *
-j_push_nil(j_t *J,  j_obj_t *s)
-{
-  return j_push(J, s, J->Nil);
-}
-
 void
-j_error(j_t *J, char *error)
+j_error(jubil *J, char *error)
 {
   fputs(error, J->err);
   fputc('\n', J->err);
@@ -297,52 +258,9 @@ j_error(j_t *J, char *error)
   }
 }
 
-void
-j_exec(j_t *J, j_obj_t *program)
-{
-  j_obj_t *cursor;
-
- recur:
-  if (program == J->Nil) {
-    return;
-  }
-
-  J->Conts = j_push(J, J->Conts, program);
-
-  while (J->Conts->head != J->Nil) {
-    cursor = j_head(J, J->Conts->head);
-    switch (cursor->flags) {
-    case J_BOOL_T:
-    case J_FIX_T:
-    case J_FLO_T:
-    case J_STR_T:
-    case J_LIST_T:
-      J->Stack = j_push(J, J->Stack, cursor);
-      break;
-    case J_SYM_T:
-      J->Conts->head = j_push(J, j_tail(J, J->Conts->head), j_lookup(J, cursor));
-      continue;
-    case J_USR_T:
-      if (J->Conts->head->tail == J->Nil) {
-        J->Conts = j_tail(J, J->Conts);
-        program = cursor->ubody;
-        goto recur;
-      }
-      else {
-        j_exec(J, cursor->ubody);
-      }
-      break;
-    default:
-      (cursor->prim)(J);
-    }
-
-    J->Conts->head = j_tail(J, J->Conts->head);
-  }
-  j_pop(J, &J->Conts);
-}
 
 void
-j_init(j_t *J)
+j_init(jubil *J)
 {
   /* Zero symtab */
   J->Syms = NULL;
@@ -352,20 +270,19 @@ j_init(j_t *J)
   J->Names = NULL;
   J->Names_sz = 0;
   J->Names_pt = 0;
-
   J->Values = NULL;
 
   J->point = NULL;
 
-  /* Circular Nil */
-  J->Nil = j_cons(J, NULL, NULL);
-  J->Nil->head = J->Nil;
-  J->Nil->tail = J->Nil;
-
   J->True = j_fix(J, 1);
-  J->True->flags = J_BOOL_T;
+  J->True.flags = JUBIL_T_BOOL;
   J->False = j_fix(J, 0);
-  J->False->flags = J_BOOL_T;
+  J->False.flags = JUBIL_T_BOOL;
+
+  /* Circular Nil */
+  J->Nil = j_cons(J, J->False, J->False);
+  J->Nil.object->head = J->Nil;
+  J->Nil.object->tail = J->Nil;
 
   J->Conts = J->Nil;
   J->Stack = J->Nil;
@@ -373,15 +290,13 @@ j_init(j_t *J)
   J->in = stdin;
   J->out = stdout;
   J->err = stderr;
-
-  j_init_builtins(J);
 }
 
 void
-j_repl(j_t *J)
+j_repl(jubil *J)
 {
-  j_obj_t *tmp;
-  J->point = Malloc(sizeof(*J->point));
+  jubil_value tmp;
+  J->point = malloc(sizeof(*J->point));
   if (J->point == NULL) {
     perror("malloc");
     exit(1);
@@ -390,30 +305,24 @@ j_repl(j_t *J)
   setjmp(*J->point);
   for (;;) {
     tmp = j_read(J);
-    if (tmp->flags == J_LIST_T) {
-      if (tmp->head == j_intern(J, "def", 3) &&
-          tmp->tail != J->Nil && tmp->tail->head->flags == J_SYM_T &&
-          tmp->tail->tail != J->Nil) {
-        j_define(J, tmp->tail->head,
-                 j_usr(J, tmp->tail->head, tmp->tail->tail));
-      }
-      else {
-        j_exec(J, tmp);
-      }
-    }
-    else {
-      J->Stack = j_push(J, J->Stack, tmp);
-    }
+    j_write(J, tmp);
   }
 }
 
 int
 main(int argc, char **argv)
 {
-  j_t j;
-  j_t *J = &j;
+  jubil j;
+  jubil *J = &j;
+
+  jubil_value tmp;
+
   j_init(J);
-  j_repl(J);
+
+  tmp = j_read(J);
+  j_write(J, tmp);
+
+  /*j_repl(J);*/
 
   return 0;
 }

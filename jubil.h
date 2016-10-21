@@ -2,54 +2,62 @@
 #define JUBIL_H_
 
 typedef enum {
-  J_BOOL_T = 1,
-  J_FIX_T,
-  J_FLO_T,
-  J_STR_T,
-  J_SYM_T,
-  J_LIST_T,
-  J_USR_T,
-  J_PRIM_T
-} j_flag_t;
+  JUBIL_T_BOOL = 1,
+  JUBIL_T_FIX,
+  JUBIL_T_FLO,
+  JUBIL_T_STR,
+  JUBIL_T_SYM,
+  JUBIL_T_LIST,
+  JUBIL_T_PRIM,
+} jubil_flag;
 
-typedef struct jubil_obj j_obj_t;
-typedef struct jubil j_t;
+typedef struct jubil_value jubil_value;
+typedef struct jubil_obj jubil_obj;
+typedef struct jubil jubil;
 
-struct jubil_obj {
+struct jubil_value {
   int flags;
   union {
     long fix;
     double flo;
+    jubil_obj *object;
+  };
+};
+
+struct jubil_obj {
+  struct jubil_obj *next;
+  union {
     struct {
-      j_obj_t *head;
-      j_obj_t *tail;
+      jubil_value builtin_name;
+      int (*builtin)(jubil *);
     };
     struct {
+      jubil_value head;
+      jubil_value tail;
+    };
+    struct {
+      unsigned long str_hash;
       size_t str_sz;
       char *str;
-    };
-    struct {
-      j_obj_t *uname; /* sym */
-      j_obj_t *ubody; /* list */
-    };
-    struct {
-      j_obj_t *pname; /* sym */
-      void (*prim)(j_t *);
     };
   };
 };
 
-struct jubil {
-  j_obj_t *Nil;
-  j_obj_t *True;
-  j_obj_t *False;
-  j_obj_t *Conts;
-  j_obj_t *Stack;
-  j_obj_t **Syms;
 
-  /* Dictionary: for now, I single namespace */
-  j_obj_t **Names;
-  j_obj_t **Values;
+
+struct jubil {
+  jubil_value Nil;
+  jubil_value True;
+  jubil_value False;
+
+  jubil_value Conts;
+  jubil_value Stack;
+
+  /* Global namespace: linearly searched */
+  jubil_value *Names;
+  jubil_value *Values;
+  size_t Names_sz;
+  size_t Names_pt;
 
   FILE *in; /* current input file */
   FILE *out; /* current output file */
@@ -57,48 +65,43 @@ struct jubil {
 
   jmp_buf *point;
 
-  int Syms_sz;
-  int Syms_pt;
-
-  int Names_sz;
-  int Names_pt;
+  /* Interned Symbols */
+  jubil_value *Syms;
+  size_t Syms_sz;
+  size_t Syms_pt;
 };
 
-typedef struct jubil_builtin {
-  void (*prim)(j_t *);
-  char *name;
-} j_builtin_t;
 
-j_obj_t *j_push(j_t *, j_obj_t *, j_obj_t *);
-j_obj_t *j_push_fix(j_t *, j_obj_t *, long);
-j_obj_t *j_push_flo(j_t *, j_obj_t *, double);
-j_obj_t *j_push_str(j_t *, j_obj_t *, char *, size_t);
-j_obj_t *j_push_sym(j_t *, j_obj_t *, char *, size_t);
-j_obj_t *j_push_nil(j_t *, j_obj_t *);
+jubil_value j_push(jubil *, jubil_value , jubil_value );
+jubil_value j_push_fix(jubil *, jubil_value , long);
+jubil_value j_push_flo(jubil *, jubil_value , double);
+jubil_value j_push_str(jubil *, jubil_value , char *, size_t);
+jubil_value j_push_sym(jubil *, jubil_value , char *, size_t);
+jubil_value j_push_nil(jubil *, jubil_value );
 
-j_obj_t *j_pop(j_t *, j_obj_t **);
-j_obj_t *j_peek(j_t *, j_obj_t *);
+jubil_value j_pop(jubil *, jubil_value *);
+jubil_value j_peek(jubil *, jubil_value );
 
-j_obj_t *j_fix(j_t *, long);
-j_obj_t *j_flo(j_t *, double);
-j_obj_t *j_str(j_t *, char *, size_t);
-j_obj_t *j_intern(j_t *, char *, size_t);
-j_obj_t *j_cons(j_t *, j_obj_t *, j_obj_t *);
-j_obj_t *j_usr(j_t *, j_obj_t *, j_obj_t *);
-j_obj_t *j_prim(j_t *, j_obj_t *, void (*prim)(j_t *));
+jubil_value j_fix(jubil *, long);
+jubil_value j_flo(jubil *, double);
+jubil_value j_str(jubil *, char *, size_t);
+jubil_value j_intern(jubil *, char *, size_t);
+jubil_value j_cons(jubil *, jubil_value , jubil_value );
+jubil_value j_usr(jubil *, jubil_value , jubil_value );
+jubil_value j_prim(jubil *, jubil_value , int (*prim)(jubil *));
 
-j_obj_t *j_define(j_t *, j_obj_t *, j_obj_t *);
-j_obj_t *j_lookup(j_t *, j_obj_t *);
+jubil_value j_define(jubil *, jubil_value , jubil_value );
+jubil_value j_lookup(jubil *, jubil_value );
 
-j_obj_t *j_head(j_t *, j_obj_t *);
-j_obj_t *j_tail(j_t *, j_obj_t *);
+jubil_value j_head(jubil *, jubil_value );
+jubil_value j_tail(jubil *, jubil_value );
 
-j_obj_t *j_read(j_t *);
-void j_write(j_t *, j_obj_t *o);
+jubil_value j_read(jubil *);
+void j_write(jubil *, jubil_value o);
 
-void j_init(j_t *);
-void j_init_builtins(j_t *);
-void j_exec(j_t *, j_obj_t *);
-void j_error(j_t *, char *);
+void j_init(jubil *);
+void j_init_builtins(jubil *);
+void j_exec(jubil *, jubil_value );
+void j_error(jubil *, char *);
 
 #endif
