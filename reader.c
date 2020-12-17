@@ -1,265 +1,156 @@
-#include <setjmp.h>
+#include <assert.h>
+#include <errno.h>
 #include <ctype.h>
 #include <string.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <stdio.h>
 
 #include "jubil.h"
+#include "internal.h"
 
 #define isdelim(ch) (isspace(ch) || ch == '(' || ch == ')' || ch == '"')
 
-/**
- * Should pass stuff on the stack, instead of via return values.
- */
-
-static jubil_object
-read_string(jubil *J)
+static struct Jbl_Object *
+read_number_from_port(struct Jbl *J, struct Jbl_Object *in)
 {
-  char buffer[255]; /* TODO: Need to be able to support larger than 255 character strings... */
+#define BUFSIZE 32
+  char buffer[BUFSIZE + 1]; /* TODO: How'd we decide this? */
   int bufi = 0;
-  int ch, la;
+  int ch = 0;
+  int negative = 0;
+  long fixval = 0;
 
-  while (bufi < 255) {
-    ch = fgetc(J->in);
-    if (ch == EOF) {
-      j_error(J, "eof while reading string.");
-      return NULL;
-    }
-    if (ch == '"') {
-      buffer[bufi] = '\0';
-      return j_str(J, buffer, bufi);
-    }
-    else if (ch == '\\') {
-      la = fgetc(J->in);
-      if (la == EOF) {
-        j_error(J, "eof while reading string.");
-        return NULL;
-      }
-      switch (la) {
-      case '\\':
-        buffer[bufi++] = '\\';
-        break;
-      case '"':
-        buffer[bufi++] = '"';
-        break;
-      case 'a':
-        buffer[bufi++] = '\a';
-        break;
-      case 'n':
-        buffer[bufi++] = '\n';
-        break;
-      case 'r':
-        buffer[bufi++] = '\r';
-        break;
-      case 't':
-        buffer[bufi++] = '\t';
-        break;
-      }
-    } else {
-      buffer[bufi++] = ch;
-    }
-  }
 
-  j_error(J, "string too long\n");
-  return NULL;
-}
+  assert(in->type & JUBIL_TYPE_FILEPORT);
 
-static jubil_object
-read_number(jubil *J, int negative)
-{
-  char buffer[32];
-  int bufi = 0;
-  int sawdot = 0;
-  int ch;
-  double floval;
-  long fixval;
-
-  while (bufi < 32) {
-    ch = fgetc(J->in);
-    if (ch == EOF) {
-      j_error(J, "eof  while reading number.");
-      return NULL;
-    }
-
-    if (isdigit(ch)) {
-      buffer[bufi++] = ch;
-    }
-    else if (ch == '.') {
-      if (sawdot) {
-        j_error(J, "invalid number found.");
-        return NULL;
-      }
-      else {
-        buffer[bufi++] = '.';
-        sawdot = 1;
-      }
-    }
-    else if (isdelim(ch)) {
-      ungetc(ch, J->in);
-      /* have our number. Let's do it */
-      buffer[bufi] = '\0';
+  while (bufi < BUFSIZE) {
+    ch = Jbl_port_getc(J, in);
+    if (EOF == ch) {
       if (bufi > 0) {
-        if (sawdot) {
-          floval = strtod(buffer, NULL);
-          if (negative) {
-            floval *= -1.0;
-          }
-          return j_flo(J, floval);
-        }
-        else {
-          fixval = strtol(buffer, NULL, 10);
-          if (negative) {
-            fixval *= -1L;
-          }
-          return j_fix(J, fixval);
-        }
+        goto done;
       }
-      else {
-        j_error(J, "invalid number found.");
-        return NULL;
+
+      Jbl_error(J, "EOF while reading integer");
+      return NULL;
+    } else if (isdelim(ch)) {
+      Jbl_port_ungetc(J, in, ch);
+      buffer[bufi] = '\0';
+      goto done;
+    } else if ('+' == ch || '-' == ch) {
+      if (0 == bufi) { /* is it the first character? */
+        negative = '-' == ch ? 1: 0;
+        continue;
       }
-    }
-  }
-  j_error(J, "can't support numbers that large.");
-  return NULL;
-}
-
-static jubil_object
-read_symbol(jubil *J)
-{
-  char buffer[255];
-  int bufi = 0;
-  int ch, la, sawdot = -1;
-  jubil_object module, *identifier;
-
-  while (bufi < 255) {
-    ch = fgetc(J->in);
-    if (ch == EOF) {
-      j_error(J, "eof while reading symbol.");
+      Jbl_error(J, "invalid integer character");
+      return NULL;
+    } else if (isdigit(ch)) {
+      buffer[bufi] = ch;
+      bufi++;
+    } else {
+      Jbl_error(J, "invalid integer character");
       return NULL;
     }
+  }
 
-    if (isalnum(ch)) {
-      buffer[bufi++] = ch;
-    }
-    else if (ch == '.') { /* TODO: Need to turn this into a refer form ideally ... */
-      sawdot = bufi;
-      buffer[bufi++] = ch;
-    }
-    else if (isgraph(ch) && !isdelim(ch)) {
-      buffer[bufi++] = ch;
+  Jbl_error(J, "integer too big");
+  return NULL;
+
+ done:
+  /* Do we actually have anything in the buffer? */
+  if (0 == bufi) {
+    return NULL;
+  }
+
+  /* reset errno so we can check it right after */
+  errno = 0;
+  fixval = strtol(buffer, NULL, 10);
+  if (ERANGE == errno && (LONG_MAX == fixval || LONG_MIN == fixval)) {
+    Jbl_error(J, "integer out of range");
+    return NULL;
+  }
+
+  if (negative) {
+    fixval *= -1L;
+  }
+
+  struct Jbl_Object *new = Jbl_alloc(J, JUBIL_TYPE_INT);
+  if (NULL == new) {
+    Jbl_error(J, "unable to allocate integer");
+    return NULL;
+  }
+
+  new->value.integer = fixval;
+  return new;
+#undef BUFSIZE
+}
+
+
+static struct Jbl_Object *
+read_symbol_from_port(struct Jbl *J, struct Jbl_Object *in)
+{
+#define BUFSIZE 255 /* how do we determine this? */
+  char buffer[BUFSIZE + 1];
+  int bufi = 0;
+  int ch = 0;
+
+  assert(in->type & JUBIL_TYPE_FILEPORT);
+
+  while (bufi < BUFSIZE) {
+    ch = Jbl_port_getc(J, in);
+    if (EOF == ch) {
+      if (bufi > 0) {
+        buffer[bufi] = '\0';
+        goto intern;
+      }
+
+      Jbl_error(J, "EOF while reading symbol");
+      return NULL;
     }
     else if (isdelim(ch)) {
-      ungetc(ch, J->in);
+      Jbl_port_ungetc(J, in, ch);
       buffer[bufi] = '\0';
-      return j_intern(J, buffer, bufi);
+      goto intern;
     }
-    else {
-      j_error(J, "invalid symbol character.");
+    else if (isgraph(ch)) {
+      buffer[bufi++] = ch;
+    }
+    else if (bufi >= 0 && isalpha(ch)) {
+      buffer[bufi++] = ch;
+    }
+    else if (bufi > 0 && isdigit(ch)) {
+      /* can't start with a digit */
+      buffer[bufi++] = ch;
+    } else {
+      Jbl_error(J, "invalid symbol character");
       return NULL;
     }
   }
+
+ intern:
+  // FIXME
+  return NULL;
+
+#undef BUFSIZE
 }
 
-static char
-eat_space(FILE *in)
-{
-  int ch;
-  do {
-    ch = fgetc(in);
-  } while (isspace(ch));
-  return ch;
-}
 
-static jubil_object
-read_list(jubil *J)
+
+/**
+ * Jbl_read reads the next object from the open port.
+ *
+ * @requires `port` is open and readable.
+ * @ensures first object on port is read, an error is raised, or nothing is returned.
+ */
+struct Jbl_Object *
+Jbl_read(struct Jbl *J, struct Jbl_Object *port)
 {
-  jubil_object obj;
-  int ch;
-  ch = fgetc(J->in);
-  if (ch == EOF) {
-    j_error(J, "eof while reading list.");
+  assert(NULL != port);
+
+  if (!OF_TYPE(port, JUBIL_TYPE_FILEPORT)) {
+    Jbl_error(J, "not a port");
     return NULL;
   }
 
-  /* Is this just nil? */
-  if (ch == ')') {
-    return J->Nil;
-  }
-  else {
-    ungetc(ch, J->in);
-  }
-
-  /* Ok. Legitimate list it seems. Let's read it recursively */
-  obj = j_read(J);
-  if (!obj) {
-    return obj;
-  }
-
-  ch = eat_space(J->in);
-  if (ch == ')') {
-    return j_cons(J, obj, J->Nil);
-  }
-
-  ungetc(ch, J->in);
-  return j_cons(J, obj, read_list(J));
-}
-
-jubil_object
-j_read(jubil *J)
-{
-  jubil_object tmp;
-  int ch, la;
- next:
-  ch = fgetc(J->in);
-  if (ch == EOF) {
-    return NULL;
-  }
-
-  switch (ch) {
-  case '(':
-    return read_list(J);
-  case ';': /* read til end of line */
-    while ((ch = fgetc(J->in)) != '\n') {
-      if (ch == EOF) {
-        return NULL;
-      }
-    }
-    goto next;
-  case ' ':
-  case '\t':
-  case '\n':
-  case '\r':
-    goto next;
-  case '"':
-    return read_string(J);
-  case '\'':
-    tmp = j_read(J);
-    if (tmp != NULL && tmp->flags == J_LIST_T) {
-      fprintf(J->err, "TRACE: quoted list becomes anonymous USR\n");
-      return j_usr(J, j_intern(J, "<anonymous>", strlen("<anonymous>")), tmp);
-    }
-    break;
-  case '-':
-  case '+':
-    la = fgetc(J->in);
-    if (la == EOF) {
-      j_error(J, "eof reached in mid form.");
-      return NULL;
-    }
-    if (isdigit(la)) {
-      ungetc(la, J->in);
-      return read_number(J, ch == '-');
-    }
-    else {
-      ungetc(la, J->in);
-    }
-  default:
-    ungetc(ch, J->in);
-    if (isdigit(ch)) {
-      return read_number(J, 0);
-    }
-  }
-
-  return read_symbol(J);
+  return read_number_from_port(J, port);
 }
