@@ -1,8 +1,23 @@
-LDFLAGS = -lm
-CFLAGS = -g
+CFLAGS = -std=c99 -Wall -Wextra -pedantic -Wstrict-overflow \
+	-fno-strict-aliasing -Wno-missing-field-initializers -g -DDEBUGGING
 
-jubil: jubil.o reader.o writer.o
-	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
+OBJS =  jubil.o \
+	port.o \
+	reader.o
+
+
+HEADERS = \
+	jubil.h
+
+all: tags jubil
+
+tags:
+	etags *.c *.h
+
+jubil: $(OBJS) main.o
+	$(CC) $(CFLAGS) -o $@ $(OBJS) main.o
+
+*.o: Makefile $(HEADERS)
 
 clean:
-	rm -rf jubil *.o
+	rm -f *.o *.core jubil

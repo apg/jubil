@@ -2,3 +2,70 @@
 
 Last Update: [2020-12-17 Thu]
 
+I had some thoughts recently about the direction that this might go.
+
+Kind of the first realization is that there are a small set of primitives that
+need to exist to implement the executor, but that a macro expander could very
+easily provide the necessary capabilities to build the compiler on top of that
+and build in the other properties that I desire for ergonomics but don't
+necessarily require from the perspective of the language.
+
+First off, let's define the minimal implementation:
+
+*Thunk*: A compiled set of instructions that can be executed as a
+unit. There is no associated scope with these thunks, though scope can
+be introduced.
+
+*Program Stack / Dump*: This is where we put thunks we need to come
+back to. It's basically a linked list of frames that contain
+instruction pointers offset into a thunk.
+
+*Data Stack*: The actual arguments and return values side effected by
+calling thunks. This effectively represents all in / out params to
+function calls.
+
+A thunk is actually composed of an array of Jbl_Objects which serve as
+the "code" to be executed. You might typically consider this "byte"
+code, but this is not bytecode.
+
+- An atom, such as a string or integer is pushed to the data stack
+- A reference, which is a reference to a non primitive in the
+  dictionary / environment
+- A function pointer, which has a function pointer that can be called directly.
+  - This is how primitives are implemented, and they can of course
+    access the internal VM state to do wild wild things like implement
+    jumps. These function pointers can also be referred to, so they
+    can be stored in an environment just the same.
+
+Primitives:
+
+- push value onto the data stack
+- pop data off of the data stack
+- compile the list on top of the data stack
+- increment the instruction pointer
+- push the environment, effectively creating a new frame / lexical scope
+- pop the environment, effectively removing / lexical scope
+  - While scope can be popped, the process of compilation into a thunk
+    can create a reference to a previously defined function, making it
+    possible to _hide_ references to functions within a temporary
+    scope not linked from somewhere else.
+- assign a name to thing on top of the stack.
+
+
+So, a program such as:
+
+(define add1 1 +) =>
+
+If we say "run this block of code" the end result is that we'll end up
+with a thunk on the top of the stack that defines a function in the
+dictionary that adds 1 to top of the stack.
+
+The compiled thunk looks like this, and it is then saved into the
+dictionary because of `define`
+
+PUSH-CONST 1
+LOOKUP-AND-EXECUTE "+"
+PUSH-RESULT
+
+
+
