@@ -8,7 +8,7 @@
 #include "internal.h"
 
 /**
- * Jbl_openfile opens the file at `path` with the given `mode`,
+ * Jbl_Port_openfile opens the file at `path` with the given `mode`,
  * creating a port, usable by Jubil.
  *
  * @requires path != "" and path != NULL
@@ -19,16 +19,22 @@
  *  fopen(3).
  */
 struct Jbl_Object *
-Jbl_open_file(struct Jbl *J, const char *path, const char *mode)
+Jbl_Port_openfile(struct Jbl *J, const char *path, const char *mode)
 {
   struct Jbl_Object *new;
+  char *actual_mode = "r";
 
-  if (strlen(path) == 0) {
+  if (NULL == path || strlen(path) == 0) {
     Jbl_error(J, "openfile requires path");
   }
 
+  if (NULL != mode && strlen(mode) >= 0) {
+    actual_mode = mode;
+  }
+  /* TODO(apg): We can default to "r" here. */
   if (strlen(mode) == 0) {
     Jbl_error(J, "openfile requires mode");
+
   }
 
   new = Jbl_alloc(J, JUBIL_TYPE_FILEPORT);
@@ -38,7 +44,7 @@ Jbl_open_file(struct Jbl *J, const char *path, const char *mode)
   }
 
   /* OK, we now should open the file, and do the thing. */
-  new->value.fileport = fopen(path, mode);
+  new->value.fileport = fopen(path, actual_mode);
   if (new->value.fileport == NULL) {
     /* Gotta return an error here, but that's dependent on errno */
     Jbl_error(J, strerror(errno));
@@ -52,7 +58,7 @@ Jbl_open_file(struct Jbl *J, const char *path, const char *mode)
 }
 
 int
-Jbl_port_getc(struct Jbl *J, struct Jbl_Object *port)
+Jbl_Port_getc(struct Jbl *J, struct Jbl_Object *port)
 {
   UNUSED(J);
 
@@ -67,7 +73,7 @@ Jbl_port_getc(struct Jbl *J, struct Jbl_Object *port)
 }
 
 int
-Jbl_port_ungetc(struct Jbl *J, struct Jbl_Object *port, int c)
+Jbl_Port_ungetc(struct Jbl *J, struct Jbl_Object *port, int c)
 {
   UNUSED(J);
 
@@ -82,7 +88,7 @@ Jbl_port_ungetc(struct Jbl *J, struct Jbl_Object *port, int c)
 }
 
 int
-Jbl_port_iseof(struct Jbl *J, struct Jbl_Object *port)
+Jbl_Port_iseof(struct Jbl *J, struct Jbl_Object *port)
 {
   UNUSED(J);
 

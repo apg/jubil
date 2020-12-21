@@ -25,7 +25,7 @@ read_number_from_port(struct Jbl *J, struct Jbl_Object *in)
   assert(in->type & JUBIL_TYPE_FILEPORT);
 
   while (bufi < BUFSIZE) {
-    ch = Jbl_port_getc(J, in);
+    ch = Jbl_Port_getc(J, in);
     if (EOF == ch) {
       if (bufi > 0) {
         goto done;
